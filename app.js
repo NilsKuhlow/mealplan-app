@@ -101,20 +101,17 @@
     t._timer = setTimeout(() => { t.hidden = true; }, 1500);
   };
 
-  // ---------- Theming nach Woche ----------
+  // ---------- Wochen-Anzeige (kein chrome-coloring; Woche ist Daten, nicht Marke) ----------
   const applyWeekTheme = () => {
     const w = planningWeek();
     const color = weeks[w].color;
-    const name = weeks[w].name;
     document.documentElement.style.setProperty('--week-color', color);
-    const mark = document.getElementById('brand-mark');
-    mark.style.background = color;
     const label = document.getElementById('week-label');
     const cur = currentRotationWeek();
     if (cur === null) {
-      label.textContent = `Übergang · Woche 1 ab Mo 04.05.`;
+      label.textContent = 'WOCHE 1 · AB 04.05.';
     } else {
-      label.textContent = `Woche ${cur} · ${name}`;
+      label.textContent = `WOCHE ${cur} · ${weeks[w].name.toUpperCase()}`;
     }
   };
 
@@ -132,7 +129,7 @@
 
     const rotInfo = cur === null
       ? `Erste Rotationswoche startet <strong>Mo 04.05.</strong> — Einkauf basiert auf <strong>Woche 1</strong>.`
-      : `Aktuelle Rotation: <strong>Woche ${w}</strong> (${weeks[w].name})`;
+      : `Aktuelle Rotation — <strong>Woche ${w}</strong> · ${weeks[w].name}`;
     hint.innerHTML = rotInfo;
 
     // Build needs by category
@@ -165,7 +162,7 @@
       const labelEl = document.createElement('div');
       labelEl.className = 'cat-label';
       const day = items.length && ingredients[items[0].id].day;
-      labelEl.innerHTML = `<span>${categoryLabels[cat]}</span><span class="cat-day ${day === 'Do' ? 'do' : 'sa'}">${day === 'Do' ? 'Donnerstag' : 'Samstag'}</span>`;
+      labelEl.innerHTML = `<span>${categoryLabels[cat]}</span><span class="cat-day">${day === 'Do' ? 'Donnerstag' : 'Samstag'}</span>`;
       group.appendChild(labelEl);
 
       for (const { id, need } of items) {
@@ -411,7 +408,7 @@
     daily.appendChild(renderDailyCard('C', breakfast.C, 'Frühstück C'));
     daily.appendChild(renderDailyCard('snack1', snack1, 'Snack 1'));
 
-    // Rotation Overview
+    // Rotation Overview — Wochenfarbe als kleines Swatch (data, not chrome)
     const grid = document.createElement('div');
     grid.className = 'rotation-grid';
     for (let i = 1; i <= 4; i++) {
@@ -420,11 +417,13 @@
       const ab = recipes[wd.abendessen];
       const row = document.createElement('div');
       row.className = 'rot-row' + (i === w ? ' current' : '');
+      row.style.setProperty('--week-tone', wd.color);
       row.innerHTML = `
-        <div class="rot-num" style="background:${wd.color}">${i}</div>
+        <div class="rot-num">${i}</div>
         <div class="rot-meals">
-          <div><strong>${pm.name}</strong></div>
-          <div class="small">${ab.name} · ${wd.name}</div>
+          <div class="pm">${pm.name}</div>
+          <div class="ab">${ab.name}</div>
+          <div class="small"><span class="week-swatch" style="background:${wd.color}"></span>${wd.name}</div>
         </div>
       `;
       grid.appendChild(row);

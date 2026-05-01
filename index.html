@@ -3,18 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#1a1a1a">
+  <meta name="theme-color" content="#FFFFFF">
   <title>Mealplan · Vorrat</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand">
-        <span class="brand-mark" id="brand-mark"></span>
+        <span class="brand-mark" id="brand-mark" aria-hidden="true">NK</span>
         <div class="brand-text">
           <h1>Mealplan</h1>
           <span id="week-label" class="week-label">—</span>
@@ -49,7 +51,7 @@
   <template id="tpl-week">
     <section class="tab-panel">
       <div id="week-meals"></div>
-      <div class="section-title">Tagesbasis (täglich)</div>
+      <div class="section-title">Tagesbasis</div>
       <div id="daily-meals"></div>
       <div class="section-title">Rotationsplan</div>
       <div id="rotation-overview"></div>
