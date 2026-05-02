@@ -29,7 +29,8 @@
       powerMeal: false,
       abendessen: false,
       supplements: false
-    }
+    },
+    extras: []  // [{ id, name, kcal, p, kh, f }]
   });
 
   const loadState = () => {
@@ -43,6 +44,7 @@
       if (!today || today.date !== todayISO()) today = defaultToday();
       // Migration: ensure all keys present
       today.consumed = { ...defaultToday().consumed, ...(today.consumed || {}) };
+      today.extras = Array.isArray(today.extras) ? today.extras : [];
       return { stock, activeTab: parsed.activeTab || 'shopping', today };
     } catch { return { stock: defaultStock(), activeTab: 'shopping', today: defaultToday() }; }
   };
@@ -397,7 +399,28 @@
     if (c.mensa)       add(macrosForSlot('mensa'));
     if (c.powerMeal)   add(macrosForSlot('powerMeal'));
     if (c.abendessen)  add(macrosForSlot('abendessen'));
+    for (const e of state.today.extras) add(e);
     return total;
+  };
+
+  const addExtra = (name, kcal, p, kh, f) => {
+    ensureTodayFresh();
+    const entry = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      name: name || 'Eintrag',
+      kcal: Math.max(0, Math.round(kcal || 0)),
+      p:    Math.max(0, Math.round(p    || 0)),
+      kh:   Math.max(0, Math.round(kh   || 0)),
+      f:    Math.max(0, Math.round(f    || 0))
+    };
+    state.today.extras.push(entry);
+    saveState();
+    return entry;
+  };
+
+  const removeExtra = (id) => {
+    state.today.extras = state.today.extras.filter(e => e.id !== id);
+    saveState();
   };
 
   const resetToday = () => {
@@ -590,10 +613,107 @@
     list.appendChild(makeRow('abendessen', 'Abendessen',   abRecipe.name,       c.abendessen,  abRecipe.macroValues,  () => applyConsume('abendessen')));
     list.appendChild(makeRow('supplements','Supplements',  'Kreatin · D3+K2 · Omega-3', c.supplements, null,            () => applyConsume('supplements')));
 
+    // Eigene Einträge — Section direkt an den Panel-Wrapper hängen
+    const panel = list.parentNode;
+
+    const extrasSection = document.createElement('div');
+    extrasSection.className = 'section-title';
+    extrasSection.textContent = 'Eigene Einträge';
+
+    const extrasList = document.createElement('div');
+    extrasList.id = 'extras-list';
+    for (const e of state.today.extras) {
+      const row = document.createElement('div');
+      row.className = 'extra-row';
+      row.innerHTML = `
+        <div class="extra-info">
+          <div class="extra-name">${escapeHtml(e.name)}</div>
+          <div class="extra-macros">${e.kcal} kcal · ${e.p}g P · ${e.kh}g KH · ${e.f}g F</div>
+        </div>
+        <button class="extra-del" type="button" aria-label="Eintrag löschen">×</button>
+      `;
+      row.querySelector('.extra-del').addEventListener('click', () => {
+        removeExtra(e.id);
+        render();
+      });
+      extrasList.appendChild(row);
+    }
+
+    // Add-Form (collapsed by default)
+    const addRow = document.createElement('div');
+    addRow.className = 'extra-add';
+    addRow.innerHTML = `
+      <button class="extra-add-btn" type="button" data-act="open-form">+ Eintrag hinzufügen</button>
+      <form class="extra-form" hidden novalidate>
+        <label class="extra-field"><span class="label">Name</span>
+          <input name="name" type="text" autocomplete="off" placeholder="z. B. Pizza Margherita" />
+        </label>
+        <div class="extra-macro-grid">
+          <label class="extra-field"><span class="label">kcal</span>
+            <input name="kcal" type="number" inputmode="numeric" min="0" step="1" required />
+          </label>
+          <label class="extra-field"><span class="label">Protein</span>
+            <input name="p" type="number" inputmode="numeric" min="0" step="1" />
+          </label>
+          <label class="extra-field"><span class="label">KH</span>
+            <input name="kh" type="number" inputmode="numeric" min="0" step="1" />
+          </label>
+          <label class="extra-field"><span class="label">Fett</span>
+            <input name="f" type="number" inputmode="numeric" min="0" step="1" />
+          </label>
+        </div>
+        <div class="extra-form-actions">
+          <button type="button" class="btn" data-act="cancel">Abbrechen</button>
+          <button type="submit" class="btn primary">Hinzufügen</button>
+        </div>
+      </form>
+    `;
+    const openBtn = addRow.querySelector('[data-act="open-form"]');
+    const form = addRow.querySelector('.extra-form');
+    const cancelBtn = addRow.querySelector('[data-act="cancel"]');
+
+    openBtn.addEventListener('click', () => {
+      openBtn.hidden = true;
+      form.hidden = false;
+      form.querySelector('input[name="name"]').focus();
+    });
+    cancelBtn.addEventListener('click', () => {
+      form.reset();
+      form.hidden = true;
+      openBtn.hidden = false;
+    });
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(form);
+      const kcal = parseInt(fd.get('kcal'), 10);
+      if (!kcal || kcal <= 0) {
+        form.querySelector('input[name="kcal"]').focus();
+        return;
+      }
+      const entry = addExtra(
+        (fd.get('name') || '').trim(),
+        kcal,
+        parseInt(fd.get('p'),  10),
+        parseInt(fd.get('kh'), 10),
+        parseInt(fd.get('f'),  10)
+      );
+      showToast(`${entry.name} +${entry.kcal} kcal`);
+      render();
+    });
+
+    extrasList.appendChild(addRow);
+
+    panel.appendChild(extrasSection);
+    panel.appendChild(extrasList);
+
     resetBtn.addEventListener('click', resetToday);
 
     $content.replaceChildren(tpl);
   };
+
+  const escapeHtml = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
   const renderWeek = () => {
     const tpl = document.getElementById('tpl-week').content.cloneNode(true);

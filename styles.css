@@ -731,6 +731,121 @@ details[open] summary::before { content: "−"; }
 }
 
 /* ============================================================
+   Eigene Einträge (Heute extras)
+   ============================================================ */
+#extras-list {
+  display: flex; flex-direction: column;
+}
+.extra-row {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--bg);
+  border: var(--bw) solid var(--hairline);
+  border-bottom-width: 0;
+}
+#extras-list .extra-row + .extra-add { border-top-width: 0; }
+.extra-info { flex: 1; min-width: 0; }
+.extra-name {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-medium);
+  font-size: var(--t-16);
+  color: var(--fg);
+  line-height: 1.2;
+}
+.extra-macros {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+  font-size: var(--t-12);
+  color: var(--fg-subtle);
+  margin-top: 4px;
+}
+.extra-del {
+  width: 28px; height: 28px;
+  border: var(--bw) solid var(--hairline);
+  background: var(--bg);
+  color: var(--fg-subtle);
+  font-size: 18px;
+  font-family: var(--font-sans);
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--r-0);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: color var(--dur-fast) var(--easing), border-color var(--dur-fast) var(--easing);
+}
+.extra-del:hover {
+  color: var(--fg);
+  border-color: var(--strong-stroke);
+}
+
+.extra-add {
+  background: var(--bg);
+  border: var(--bw) solid var(--hairline);
+}
+.extra-add-btn {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: var(--s-4);
+  font-family: var(--font-sans);
+  font-size: var(--t-14);
+  font-weight: var(--fw-medium);
+  color: var(--fg-muted);
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--r-0);
+}
+.extra-add-btn:hover { background: var(--surface-raised); color: var(--fg); }
+
+.extra-form {
+  padding: var(--s-4);
+  display: flex; flex-direction: column;
+  gap: var(--s-3);
+}
+.extra-form[hidden] { display: none; }
+.extra-field {
+  display: flex; flex-direction: column;
+  gap: 6px;
+}
+.extra-field .label { color: var(--fg-subtle); }
+.extra-field input {
+  font-family: var(--font-sans);
+  font-size: var(--t-16);
+  font-weight: var(--fw-regular);
+  color: var(--fg);
+  background: var(--bg);
+  border: var(--bw) solid var(--strong-stroke);
+  border-radius: var(--r-2); /* 4px — design system spec for form inputs */
+  padding: 10px 12px;
+  width: 100%;
+  outline: none;
+  font-feature-settings: "tnum" 1;
+  -moz-appearance: textfield;
+}
+.extra-field input::-webkit-outer-spin-button,
+.extra-field input::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.extra-field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.extra-field input::placeholder { color: var(--fg-subtle); }
+
+.extra-macro-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--s-2);
+}
+
+.extra-form-actions {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+  margin-top: var(--s-2);
+}
+
+/* ============================================================
    Toast
    ============================================================ */
 .toast {
