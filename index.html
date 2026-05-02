@@ -28,8 +28,9 @@
 
   <nav class="tabs" role="tablist">
     <button class="tab" data-tab="shopping" role="tab" aria-selected="true">Einkauf</button>
+    <button class="tab" data-tab="today" role="tab">Heute</button>
     <button class="tab" data-tab="stock" role="tab">Vorrat</button>
-    <button class="tab" data-tab="week" role="tab">Diese Woche</button>
+    <button class="tab" data-tab="week" role="tab">Plan</button>
   </nav>
 
   <main id="content" class="content"></main>
@@ -45,6 +46,18 @@
     <section class="tab-panel">
       <div class="hint">Tippe + oder − um den Bestand anzupassen. Lange drücken setzt auf 0.</div>
       <div id="stock-list"></div>
+    </section>
+  </template>
+
+  <template id="tpl-today">
+    <section class="tab-panel">
+      <div class="today-head">
+        <span class="label" id="today-date">Heute</span>
+        <button id="today-reset" class="link-btn" type="button">Tag zurücksetzen</button>
+      </div>
+      <div id="macro-bars"></div>
+      <div class="section-title">Tagesplan</div>
+      <div id="today-list"></div>
     </section>
   </template>
 

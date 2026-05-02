@@ -1,7 +1,7 @@
 // === Mealplan App · Logic ===
 (() => {
-  const { ingredients, recipes, weeks, breakfast, snack1, supplements_daily,
-          categoryLabels, categoryOrder, anchor } = APP_DATA;
+  const { ingredients, recipes, weeks, breakfast, snack1, mensa, supplements_daily,
+          daily_targets, categoryLabels, categoryOrder, anchor } = APP_DATA;
 
   const STORAGE_KEY = 'mealplan_v1';
 
@@ -12,16 +12,39 @@
     return s;
   };
 
+  const todayISO = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const defaultToday = () => ({
+    date: todayISO(),
+    consumed: {
+      breakfast: null,   // 'A' | 'B' | 'C' | null
+      snack1: false,
+      mensa: false,
+      powerMeal: false,
+      abendessen: false,
+      supplements: false
+    }
+  });
+
   const loadState = () => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { stock: defaultStock(), activeTab: 'shopping' };
+      if (!raw) return { stock: defaultStock(), activeTab: 'shopping', today: defaultToday() };
       const parsed = JSON.parse(raw);
-      // Migration: ensure all current ingredients have a slot
       const stock = defaultStock();
       Object.assign(stock, parsed.stock || {});
-      return { stock, activeTab: parsed.activeTab || 'shopping' };
-    } catch { return { stock: defaultStock(), activeTab: 'shopping' }; }
+      let today = parsed.today;
+      if (!today || today.date !== todayISO()) today = defaultToday();
+      // Migration: ensure all keys present
+      today.consumed = { ...defaultToday().consumed, ...(today.consumed || {}) };
+      return { stock, activeTab: parsed.activeTab || 'shopping', today };
+    } catch { return { stock: defaultStock(), activeTab: 'shopping', today: defaultToday() }; }
   };
 
   const saveState = () => {
@@ -306,12 +329,86 @@
     render();
   };
 
-  const consumeMeal = (items, label) => {
+  // ---------- Today / Macros ----------
+  const ensureTodayFresh = () => {
+    if (state.today.date !== todayISO()) {
+      state.today = defaultToday();
+      saveState();
+    }
+  };
+
+  const adjustStock = (items, sign) => {
     for (const item of items) {
-      state.stock[item.id] = Math.max(0, (state.stock[item.id] || 0) - item.qty);
+      state.stock[item.id] = Math.max(0, (state.stock[item.id] || 0) + sign * item.qty);
+    }
+  };
+
+  const itemsForSlot = (slot, val) => {
+    if (slot === 'breakfast') return breakfast[val].items;
+    if (slot === 'snack1') return snack1.items;
+    if (slot === 'supplements') return supplements_daily;
+    return []; // mensa, powerMeal, abendessen — bereits gekocht / extern
+  };
+
+  const macrosForSlot = (slot, val) => {
+    const w = planningWeek();
+    if (slot === 'breakfast') return breakfast[val].macroValues;
+    if (slot === 'snack1') return snack1.macroValues;
+    if (slot === 'mensa') return mensa.macroValues;
+    if (slot === 'powerMeal') return recipes[weeks[w].powerMeal].macroValues;
+    if (slot === 'abendessen') return recipes[weeks[w].abendessen].macroValues;
+    if (slot === 'supplements') return { kcal: 0, p: 0, kh: 0, f: 0 };
+    return { kcal: 0, p: 0, kh: 0, f: 0 };
+  };
+
+  // Toggle ein Slot. Für breakfast: val A/B/C wählt eine Variante (mutually exclusive).
+  const applyConsume = (slot, val) => {
+    ensureTodayFresh();
+    const c = state.today.consumed;
+    if (slot === 'breakfast') {
+      const current = c.breakfast;
+      if (current === val) {
+        adjustStock(breakfast[val].items, +1);
+        c.breakfast = null;
+      } else {
+        if (current) adjustStock(breakfast[current].items, +1);
+        adjustStock(breakfast[val].items, -1);
+        c.breakfast = val;
+      }
+    } else {
+      if (c[slot]) {
+        adjustStock(itemsForSlot(slot), +1);
+        c[slot] = false;
+      } else {
+        adjustStock(itemsForSlot(slot), -1);
+        c[slot] = true;
+      }
     }
     saveState();
-    showToast(`${label} – Zutaten abgezogen`);
+  };
+
+  const consumedMacros = () => {
+    ensureTodayFresh();
+    const total = { kcal: 0, p: 0, kh: 0, f: 0 };
+    const c = state.today.consumed;
+    const add = (m) => { total.kcal += m.kcal; total.p += m.p; total.kh += m.kh; total.f += m.f; };
+    if (c.breakfast)   add(macrosForSlot('breakfast', c.breakfast));
+    if (c.snack1)      add(macrosForSlot('snack1'));
+    if (c.mensa)       add(macrosForSlot('mensa'));
+    if (c.powerMeal)   add(macrosForSlot('powerMeal'));
+    if (c.abendessen)  add(macrosForSlot('abendessen'));
+    return total;
+  };
+
+  const resetToday = () => {
+    if (!confirm('Heute zurücksetzen? Alle abgehakten Mahlzeiten werden refundiert (Zutaten zurückgebucht).')) return;
+    const c = state.today.consumed;
+    if (c.breakfast) adjustStock(breakfast[c.breakfast].items, +1);
+    if (c.snack1) adjustStock(snack1.items, +1);
+    if (c.supplements) adjustStock(supplements_daily, +1);
+    state.today = defaultToday();
+    saveState();
+    showToast('Heute zurückgesetzt');
     render();
   };
 
@@ -385,9 +482,117 @@
       </div>
     `;
     card.querySelector('[data-act="eat"]').addEventListener('click', () => {
-      consumeMeal(def.items, def.name);
+      // Routes through today-state so macros + ingredient deduction stay in sync
+      if (key === 'A' || key === 'B' || key === 'C') {
+        applyConsume('breakfast', key);
+        showToast(`${def.name} – heute markiert`);
+      } else if (key === 'snack1') {
+        applyConsume('snack1');
+        showToast(state.today.consumed.snack1 ? 'Snack heute markiert' : 'Snack zurückgenommen');
+      }
+      render();
     });
     return card;
+  };
+
+  const renderToday = () => {
+    ensureTodayFresh();
+    const tpl = document.getElementById('tpl-today').content.cloneNode(true);
+    const dateLabel = tpl.getElementById('today-date');
+    const bars = tpl.getElementById('macro-bars');
+    const list = tpl.getElementById('today-list');
+    const resetBtn = tpl.getElementById('today-reset');
+
+    // Datum
+    const days = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+    const months = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+    const d = new Date();
+    dateLabel.textContent = `${days[d.getDay()]} · ${d.getDate()}. ${months[d.getMonth()]}`;
+
+    // Macro-Balken
+    const totals = consumedMacros();
+    const macroDefs = [
+      { key: 'kcal', label: 'kcal',    unit: ''  },
+      { key: 'p',    label: 'Protein', unit: 'g' },
+      { key: 'kh',   label: 'KH',      unit: 'g' },
+      { key: 'f',    label: 'Fett',    unit: 'g' }
+    ];
+    for (const m of macroDefs) {
+      const cur = totals[m.key];
+      const tgt = daily_targets[m.key];
+      const pct = Math.min(100, Math.round(cur / tgt * 100));
+      const reachedTarget = cur >= tgt;
+      const bar = document.createElement('div');
+      bar.className = 'macro-bar' + (reachedTarget ? ' done' : '');
+      bar.innerHTML = `
+        <div class="macro-head">
+          <span class="macro-label">${m.label}</span>
+          <span class="macro-value"><strong>${cur}</strong>${m.unit} <span class="dim">/ ${tgt}${m.unit}</span></span>
+        </div>
+        <div class="macro-track"><div class="macro-fill" style="width:${pct}%"></div></div>
+      `;
+      bars.appendChild(bar);
+    }
+
+    // Tagesplan-Liste
+    const w = planningWeek();
+    const c = state.today.consumed;
+    const pmRecipe = recipes[weeks[w].powerMeal];
+    const abRecipe = recipes[weeks[w].abendessen];
+
+    const macroChip = (m) => `<span class="today-macros">${m.kcal} kcal · ${m.p}g P</span>`;
+
+    const makeRow = (slot, label, sub, isOn, macros, onToggle) => {
+      const row = document.createElement('div');
+      row.className = 'today-row' + (isOn ? ' on' : '');
+      row.innerHTML = `
+        <div class="today-info">
+          <div class="today-label">${label}</div>
+          <div class="today-sub">${sub}</div>
+          ${macros ? macroChip(macros) : ''}
+        </div>
+        <div class="today-toggle ${isOn ? 'on' : ''}" role="checkbox" aria-checked="${isOn}" tabindex="0"></div>
+      `;
+      const t = row.querySelector('.today-toggle');
+      const handler = () => { onToggle(); render(); };
+      t.addEventListener('click', handler);
+      t.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handler(); } });
+      return row;
+    };
+
+    // Frühstück (Variante wählen)
+    const bfRow = document.createElement('div');
+    bfRow.className = 'today-row breakfast' + (c.breakfast ? ' on' : '');
+    const bfMacros = c.breakfast ? breakfast[c.breakfast].macroValues : null;
+    const bfSub = c.breakfast ? breakfast[c.breakfast].name : 'A · Overnight Oats   B · Rührei   C · Quark-Bowl';
+    const variantBtns = ['A','B','C'].map(v =>
+      `<button type="button" class="variant-btn${c.breakfast === v ? ' on' : ''}" data-variant="${v}">${v}</button>`
+    ).join('');
+    bfRow.innerHTML = `
+      <div class="today-info">
+        <div class="today-label">Frühstück</div>
+        <div class="today-sub">${bfSub}</div>
+        ${bfMacros ? macroChip(bfMacros) : ''}
+      </div>
+      <div class="variant-group">${variantBtns}</div>
+    `;
+    bfRow.querySelectorAll('.variant-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        applyConsume('breakfast', btn.dataset.variant);
+        render();
+      });
+    });
+    list.appendChild(bfRow);
+
+    list.appendChild(makeRow('snack1',     'Snack 1',      snack1.name,         c.snack1,      snack1.macroValues,    () => applyConsume('snack1')));
+    list.appendChild(makeRow('mensa',      'Mensa Mittag', mensa.note,          c.mensa,       mensa.macroValues,     () => applyConsume('mensa')));
+    list.appendChild(makeRow('powerMeal',  'Power Meal',   pmRecipe.name,       c.powerMeal,   pmRecipe.macroValues,  () => applyConsume('powerMeal')));
+    list.appendChild(makeRow('abendessen', 'Abendessen',   abRecipe.name,       c.abendessen,  abRecipe.macroValues,  () => applyConsume('abendessen')));
+    list.appendChild(makeRow('supplements','Supplements',  'Kreatin · D3+K2 · Omega-3', c.supplements, null,            () => applyConsume('supplements')));
+
+    resetBtn.addEventListener('click', resetToday);
+
+    $content.replaceChildren(tpl);
   };
 
   const renderWeek = () => {
@@ -436,6 +641,7 @@
   const render = () => {
     applyWeekTheme();
     if (state.activeTab === 'shopping') renderShopping();
+    else if (state.activeTab === 'today') renderToday();
     else if (state.activeTab === 'stock') renderStock();
     else if (state.activeTab === 'week') renderWeek();
   };

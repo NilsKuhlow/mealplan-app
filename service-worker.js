@@ -1,7 +1,7 @@
 // Mealplan App · Service Worker
 // Cache-first für statische Assets, Network-first für HTML.
 
-const VERSION = 'mealplan-v2-quietprecision';
+const VERSION = 'mealplan-v3-macros';
 const ASSETS = [
   './',
   './index.html',

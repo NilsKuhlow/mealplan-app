@@ -93,11 +93,24 @@ const APP_DATA = {
     omega3:          { name: 'Omega-3',                  unit: 'Kap',    category: 'supplement', baseTarget: 60,   day: 'Sa' }
   },
 
+  // Tagesziel — Muskelaufbau-Bulk, Studentenalltag mit Kraftsport
+  daily_targets: { kcal: 3000, p: 170, kh: 350, f: 90 },
+
+  // Mensa-Mittag — geschätzte Macros (siehe Plan: ~800–900 kcal · 40–50g P)
+  mensa: {
+    name: 'Mensa Mittag',
+    macros: '~850 kcal · 45g P · 100g KH · 25g F',
+    macroValues: { kcal: 850, p: 45, kh: 100, f: 25 },
+    items: [],
+    note: 'Mo–Fr · proteinreichstes Hauptgericht wählen'
+  },
+
   // Frühstück: 3 Varianten (frei wählbar)
   breakfast: {
     A: {
       name: 'Overnight Oats',
       macros: '~700 kcal · 45g P · 90g KH · 18g F',
+      macroValues: { kcal: 700, p: 45, kh: 90, f: 18 },
       items: [
         { id: 'haferflocken', qty: 80 },
         { id: 'skyr',         qty: 200 },
@@ -110,6 +123,7 @@ const APP_DATA = {
     B: {
       name: 'Rührei + Brot',
       macros: '~600 kcal · 32g P · 35g KH · 35g F',
+      macroValues: { kcal: 600, p: 32, kh: 35, f: 35 },
       items: [
         { id: 'eier',         qty: 4 },
         { id: 'vollkornbrot', qty: 2 },
@@ -119,6 +133,7 @@ const APP_DATA = {
     C: {
       name: 'Quark-Bowl',
       macros: '~650 kcal · 50g P · 70g KH · 15g F',
+      macroValues: { kcal: 650, p: 50, kh: 70, f: 15 },
       items: [
         { id: 'magerquark',   qty: 250 },
         { id: 'haferflocken', qty: 60 },
@@ -132,6 +147,7 @@ const APP_DATA = {
   snack1: {
     name: 'Snack 1 (Atelier)',
     macros: '~500 kcal · 32g P · 50g KH · 18g F',
+    macroValues: { kcal: 500, p: 32, kh: 50, f: 18 },
     items: [
       { id: 'whey',      qty: 30 },
       { id: 'bananen',   qty: 1 },
@@ -154,6 +170,7 @@ const APP_DATA = {
       type: 'power', portions: 5, week: 1,
       tag: 'Asia Honig-Soja',
       macros: '~620 kcal · 45g P · 75g KH · 12g F',
+      macroValues: { kcal: 620, p: 45, kh: 75, f: 12 },
       time: '~45 Min',
       items: [
         { id: 'haehnchenbrust', qty: 600 },
@@ -182,6 +199,7 @@ const APP_DATA = {
       type: 'abendessen', portions: 5, week: 1,
       tag: 'Klassisch italienisch',
       macros: '~700 kcal · 42g P · 75g KH · 22g F',
+      macroValues: { kcal: 700, p: 42, kh: 75, f: 22 },
       time: '~50 Min',
       items: [
         { id: 'rinderhack',     qty: 500 },
@@ -209,6 +227,7 @@ const APP_DATA = {
       type: 'power', portions: 5, week: 2,
       tag: 'Mediterran-pikant',
       macros: '~580 kcal · 42g P · 65g KH · 14g F',
+      macroValues: { kcal: 580, p: 42, kh: 65, f: 14 },
       time: '~50 Min',
       items: [
         { id: 'putenhack',       qty: 600 },
@@ -232,6 +251,7 @@ const APP_DATA = {
       type: 'abendessen', portions: 5, week: 2,
       tag: 'Vegetarisch, sättigend',
       macros: '~650 kcal · 28g P · 90g KH · 18g F',
+      macroValues: { kcal: 650, p: 28, kh: 90, f: 18 },
       time: '~35 Min',
       items: [
         { id: 'linsen_rot',   qty: 400 },
@@ -260,6 +280,7 @@ const APP_DATA = {
       type: 'power', portions: 5, week: 3,
       tag: 'Omega-3-Boost',
       macros: '~680 kcal · 38g P · 65g KH · 28g F',
+      macroValues: { kcal: 680, p: 38, kh: 65, f: 28 },
       time: '~45 Min',
       items: [
         { id: 'lachs_tk',   qty: 600 },
@@ -285,6 +306,7 @@ const APP_DATA = {
       type: 'abendessen', portions: 5, week: 3,
       tag: 'Wärmt von innen',
       macros: '~620 kcal · 40g P · 70g KH · 16g F',
+      macroValues: { kcal: 620, p: 40, kh: 70, f: 16 },
       time: '~50 Min',
       items: [
         { id: 'rinderhack',      qty: 500 },
@@ -312,6 +334,7 @@ const APP_DATA = {
       type: 'power', portions: 5, week: 4,
       tag: 'Orientalisch-würzig',
       macros: '~640 kcal · 42g P · 80g KH · 14g F',
+      macroValues: { kcal: 640, p: 42, kh: 80, f: 14 },
       time: '~40 Min',
       items: [
         { id: 'lammhack',     qty: 500 },
@@ -338,6 +361,7 @@ const APP_DATA = {
       type: 'abendessen', portions: 5, week: 4,
       tag: 'Cremig & schnell',
       macros: '~700 kcal · 50g P · 75g KH · 18g F',
+      macroValues: { kcal: 700, p: 50, kh: 75, f: 18 },
       time: '~30 Min',
       items: [
         { id: 'haehnchenbrust', qty: 600 },
