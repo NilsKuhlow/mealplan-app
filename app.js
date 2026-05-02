@@ -33,20 +33,85 @@
     extras: []  // [{ id, name, kcal, p, kh, f }]
   });
 
+  const defaultSettings = () => ({
+    reminderEnabled: false,
+    reminderHour: 20,
+    reminderMinute: 0
+  });
+
+  // Sums macros for a given today snapshot. Used both for live "consumedMacros"
+  // and for archiving previous days when the date rolls over.
+  const sumMacrosForSnapshot = (snapshot) => {
+    if (!snapshot) return { kcal: 0, p: 0, kh: 0, f: 0 };
+    const c = snapshot.consumed || {};
+    const total = { kcal: 0, p: 0, kh: 0, f: 0 };
+    const add = (m) => { if (!m) return; total.kcal += m.kcal; total.p += m.p; total.kh += m.kh; total.f += m.f; };
+    if (c.breakfast)  add(breakfast[c.breakfast]?.macroValues);
+    if (c.snack1)     add(snack1.macroValues);
+    if (c.mensa)      add(mensa.macroValues);
+    // Archived powerMeal/abendessen: use the recipe matching THAT week, not today's.
+    // For simplicity we re-derive via week of snapshot.date.
+    if (c.powerMeal || c.abendessen) {
+      const weekNum = weekOfDate(snapshot.date);
+      if (weekNum) {
+        if (c.powerMeal)  add(recipes[weeks[weekNum].powerMeal]?.macroValues);
+        if (c.abendessen) add(recipes[weeks[weekNum].abendessen]?.macroValues);
+      }
+    }
+    for (const e of (snapshot.extras || [])) add(e);
+    return total;
+  };
+
+  const weekOfDate = (dateStr) => {
+    if (!dateStr) return null;
+    const d = parseDate(dateStr);
+    const monday = startOfWeekMonday(d);
+    const anchorDate = parseDate(anchor);
+    const diffDays = Math.round((monday - anchorDate) / 86400000);
+    if (diffDays < 0) return null;
+    return Math.floor(diffDays / 7) % 4 + 1;
+  };
+
   const loadState = () => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { stock: defaultStock(), activeTab: 'shopping', today: defaultToday() };
+      if (!raw) return {
+        stock: defaultStock(),
+        activeTab: 'shopping',
+        today: defaultToday(),
+        history: {},
+        settings: defaultSettings()
+      };
       const parsed = JSON.parse(raw);
       const stock = defaultStock();
       Object.assign(stock, parsed.stock || {});
+      const history = (parsed.history && typeof parsed.history === 'object') ? { ...parsed.history } : {};
+      const settings = { ...defaultSettings(), ...(parsed.settings || {}) };
+
       let today = parsed.today;
-      if (!today || today.date !== todayISO()) today = defaultToday();
+      if (!today) {
+        today = defaultToday();
+      } else if (today.date !== todayISO()) {
+        // Archive the old day's totals, then reset
+        const totals = sumMacrosForSnapshot(today);
+        if (totals.kcal > 0 || totals.p > 0 || totals.kh > 0 || totals.f > 0) {
+          history[today.date] = totals;
+        }
+        today = defaultToday();
+      }
       // Migration: ensure all keys present
       today.consumed = { ...defaultToday().consumed, ...(today.consumed || {}) };
       today.extras = Array.isArray(today.extras) ? today.extras : [];
-      return { stock, activeTab: parsed.activeTab || 'shopping', today };
-    } catch { return { stock: defaultStock(), activeTab: 'shopping', today: defaultToday() }; }
+      return { stock, activeTab: parsed.activeTab || 'shopping', today, history, settings };
+    } catch {
+      return {
+        stock: defaultStock(),
+        activeTab: 'shopping',
+        today: defaultToday(),
+        history: {},
+        settings: defaultSettings()
+      };
+    }
   };
 
   const saveState = () => {
@@ -334,6 +399,10 @@
   // ---------- Today / Macros ----------
   const ensureTodayFresh = () => {
     if (state.today.date !== todayISO()) {
+      const totals = sumMacrosForSnapshot(state.today);
+      if (totals.kcal > 0 || totals.p > 0 || totals.kh > 0 || totals.f > 0) {
+        state.history[state.today.date] = totals;
+      }
       state.today = defaultToday();
       saveState();
     }
@@ -391,16 +460,7 @@
 
   const consumedMacros = () => {
     ensureTodayFresh();
-    const total = { kcal: 0, p: 0, kh: 0, f: 0 };
-    const c = state.today.consumed;
-    const add = (m) => { total.kcal += m.kcal; total.p += m.p; total.kh += m.kh; total.f += m.f; };
-    if (c.breakfast)   add(macrosForSlot('breakfast', c.breakfast));
-    if (c.snack1)      add(macrosForSlot('snack1'));
-    if (c.mensa)       add(macrosForSlot('mensa'));
-    if (c.powerMeal)   add(macrosForSlot('powerMeal'));
-    if (c.abendessen)  add(macrosForSlot('abendessen'));
-    for (const e of state.today.extras) add(e);
-    return total;
+    return sumMacrosForSnapshot(state.today);
   };
 
   const addExtra = (name, kcal, p, kh, f) => {
@@ -516,6 +576,187 @@
       render();
     });
     return card;
+  };
+
+  // ---------- Verlauf / Chart ----------
+  const trendUI = { range: 'week', macro: 'kcal' };
+
+  const isoDaysAgo = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // Build entries [{ key, value, tick? }] for the requested range + macro.
+  const buildTrendEntries = (range, macro) => {
+    const target = APP_DATA.daily_targets[macro];
+    const liveTotals = consumedMacros();
+    const todayKey = todayISO();
+    const valueFor = (dateKey) => {
+      if (dateKey === todayKey) return liveTotals[macro] || 0;
+      const h = state.history[dateKey];
+      return h ? (h[macro] || 0) : 0;
+    };
+
+    if (range === 'week') {
+      const dayInitials = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+      const entries = [];
+      for (let i = 6; i >= 0; i--) {
+        const key = isoDaysAgo(i);
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        entries.push({
+          key,
+          value: valueFor(key),
+          tick: dayInitials[date.getDay()]
+        });
+      }
+      return { entries, target, label: macro };
+    }
+
+    if (range === 'month') {
+      const entries = [];
+      for (let i = 29; i >= 0; i--) {
+        const key = isoDaysAgo(i);
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const d = date.getDate();
+        entries.push({
+          key,
+          value: valueFor(key),
+          tick: (d === 1 || d % 5 === 0) ? String(d) : ''
+        });
+      }
+      return { entries, target, label: macro };
+    }
+
+    if (range === 'year') {
+      // 12 Monate — Mittelwert über erfasste Tage je Monat
+      const monthInitials = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+      const entries = [];
+      const now = new Date();
+      const todaysVal = liveTotals[macro] || 0;
+      for (let i = 11; i >= 0; i--) {
+        const cursor = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const yr = cursor.getFullYear();
+        const mo = cursor.getMonth();
+        let sum = 0, count = 0;
+        for (const [dateKey, h] of Object.entries(state.history)) {
+          const dd = parseDate(dateKey);
+          if (dd.getFullYear() === yr && dd.getMonth() === mo) {
+            sum += (h[macro] || 0); count++;
+          }
+        }
+        // Heutigen Wert für aktuellen Monat einbeziehen
+        if (yr === now.getFullYear() && mo === now.getMonth() && todaysVal > 0) {
+          sum += todaysVal; count++;
+        }
+        entries.push({
+          key: `${yr}-${String(mo + 1).padStart(2, '0')}`,
+          value: count > 0 ? Math.round(sum / count) : 0,
+          tick: monthInitials[mo]
+        });
+      }
+      return { entries, target, label: macro };
+    }
+
+    return { entries: [], target, label: macro };
+  };
+
+  const macroUnit = (macro) => macro === 'kcal' ? 'kcal' : 'g';
+
+  const renderChart = (entries, target, macro) => {
+    const W = 320, H = 180;
+    const PAD = { t: 28, r: 10, b: 28, l: 10 };
+    const chartW = W - PAD.l - PAD.r;
+    const chartH = H - PAD.t - PAD.b;
+
+    const peak = entries.reduce((m, e) => Math.max(m, e.value), 0);
+    const max = Math.max(target * 1.05, peak * 1.05, target || 1);
+
+    const slot = chartW / Math.max(1, entries.length);
+    const barW = slot * 0.62;
+
+    const targetY = PAD.t + chartH * (1 - target / max);
+    const todayKey = todayISO();
+
+    let bars = '';
+    let labels = '';
+    entries.forEach((e, i) => {
+      const x = PAD.l + slot * i + (slot - barW) / 2;
+      const h = e.value <= 0 ? 0 : Math.max(2, chartH * (e.value / max));
+      const y = PAD.t + chartH - h;
+      const reached = target > 0 && e.value >= target;
+      const isToday = e.key === todayKey;
+      const fill = reached ? 'var(--accent)' : (e.value > 0 ? 'var(--fg)' : 'var(--hairline)');
+      const strokeAttr = isToday ? ' stroke="var(--ink-1)" stroke-width="1.5"' : '';
+      // Empty days: tiny tick at baseline
+      if (h === 0) {
+        bars += `<rect x="${x}" y="${PAD.t + chartH - 1}" width="${barW}" height="1" fill="var(--hairline-strong)"/>`;
+      } else {
+        bars += `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barW.toFixed(2)}" height="${h.toFixed(2)}" fill="${fill}"${strokeAttr}/>`;
+      }
+      if (e.tick) {
+        const lx = PAD.l + slot * i + slot / 2;
+        const ly = H - 8;
+        const tickColor = isToday ? 'var(--fg)' : 'var(--fg-subtle)';
+        const tickWeight = isToday ? '600' : '400';
+        labels += `<text x="${lx.toFixed(2)}" y="${ly}" text-anchor="middle" fill="${tickColor}" font-size="10" font-weight="${tickWeight}" font-family="JetBrains Mono, ui-monospace, monospace">${e.tick}</text>`;
+      }
+    });
+
+    const targetLine = target > 0 ? `
+      <line x1="${PAD.l}" y1="${targetY.toFixed(2)}" x2="${W - PAD.r}" y2="${targetY.toFixed(2)}"
+            stroke="var(--hairline-strong)" stroke-width="1" stroke-dasharray="3 3" />
+      <text x="${W - PAD.r}" y="${(targetY - 6).toFixed(2)}" text-anchor="end"
+            fill="var(--fg-subtle)" font-size="10" font-family="JetBrains Mono, ui-monospace, monospace">Ziel ${target} ${macroUnit(macro)}</text>
+    ` : '';
+
+    return `<svg viewBox="0 0 ${W} ${H}" class="chart-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Verlauf">
+      ${targetLine}
+      ${bars}
+      ${labels}
+    </svg>`;
+  };
+
+  const renderTrend = () => {
+    const tpl = document.getElementById('tpl-trend').content.cloneNode(true);
+    const frame = tpl.getElementById('chart-frame');
+    const stats = tpl.getElementById('trend-stats');
+    const reminderHost = tpl.getElementById('reminder-row');
+
+    // Selectors — aria-selected reflects state
+    tpl.querySelectorAll('#range-seg .seg-btn').forEach(btn => {
+      btn.setAttribute('aria-selected', btn.dataset.range === trendUI.range ? 'true' : 'false');
+      btn.addEventListener('click', () => { trendUI.range = btn.dataset.range; render(); });
+    });
+    tpl.querySelectorAll('#macro-seg .seg-btn').forEach(btn => {
+      btn.setAttribute('aria-selected', btn.dataset.macro === trendUI.macro ? 'true' : 'false');
+      btn.addEventListener('click', () => { trendUI.macro = btn.dataset.macro; render(); });
+    });
+
+    const { entries, target, label } = buildTrendEntries(trendUI.range, trendUI.macro);
+    frame.innerHTML = renderChart(entries, target, label);
+
+    // Statistik
+    const recorded = entries.filter(e => e.value > 0);
+    const avg = recorded.length ? Math.round(recorded.reduce((s, e) => s + e.value, 0) / recorded.length) : 0;
+    const max = recorded.reduce((m, e) => e.value > m.value ? e : m, { value: 0, key: '' });
+    const reachedCount = entries.filter(e => target > 0 && e.value >= target).length;
+
+    const rangeName = trendUI.range === 'week' ? '7 Tage' : trendUI.range === 'month' ? '30 Tage' : '12 Monate';
+    const unit = macroUnit(trendUI.macro);
+    stats.innerHTML = `
+      <div class="trend-stat"><span class="label">Durchschnitt</span><span class="val"><strong>${avg}</strong> ${unit}</span></div>
+      <div class="trend-stat"><span class="label">Erfasst</span><span class="val"><strong>${recorded.length}</strong> / ${entries.length}</span></div>
+      <div class="trend-stat"><span class="label">Ziel erreicht</span><span class="val"><strong>${reachedCount}</strong> ${trendUI.range === 'year' ? 'Mon.' : 'Tg.'}</span></div>
+      <div class="trend-stat"><span class="label">Bestwert</span><span class="val"><strong>${max.value || 0}</strong> ${unit}</span></div>
+    `;
+
+    // Reminder UI (siehe renderReminder weiter unten)
+    renderReminderRow(reminderHost);
+
+    $content.replaceChildren(tpl);
   };
 
   const renderToday = () => {
@@ -762,8 +1003,185 @@
     applyWeekTheme();
     if (state.activeTab === 'shopping') renderShopping();
     else if (state.activeTab === 'today') renderToday();
+    else if (state.activeTab === 'trend') renderTrend();
     else if (state.activeTab === 'stock') renderStock();
     else if (state.activeTab === 'week') renderWeek();
+  };
+
+  // ---------- Reminder (20:00 nightly missing-macros notification) ----------
+  const NOTIFICATION_TAG = 'mealplan-evening';
+  const hasNotificationAPI = () => 'Notification' in window;
+  const hasTimestampTrigger = () => 'TimestampTrigger' in window;
+  let foregroundReminderTimer = null;
+
+  const buildReminderBody = () => {
+    const totals = sumMacrosForSnapshot(state.today);
+    const t = APP_DATA.daily_targets;
+    const missing = {
+      kcal: Math.max(0, t.kcal - totals.kcal),
+      p:    Math.max(0, t.p - totals.p),
+      kh:   Math.max(0, t.kh - totals.kh),
+      f:    Math.max(0, t.f - totals.f)
+    };
+    if (missing.kcal === 0 && missing.p === 0 && missing.kh === 0 && missing.f === 0) {
+      return 'Tagesziel erreicht. ✓';
+    }
+    const parts = [];
+    if (missing.kcal > 0) parts.push(`${missing.kcal} kcal`);
+    if (missing.p > 0)    parts.push(`${missing.p}g Protein`);
+    if (missing.kh > 0)   parts.push(`${missing.kh}g KH`);
+    if (missing.f > 0)    parts.push(`${missing.f}g Fett`);
+    return `Heute fehlen: ${parts.join(' · ')}.`;
+  };
+
+  const nextReminderTimestamp = () => {
+    const now = new Date();
+    const target = new Date();
+    target.setHours(state.settings.reminderHour, state.settings.reminderMinute, 0, 0);
+    if (target <= now) target.setDate(target.getDate() + 1);
+    return target.getTime();
+  };
+
+  const cancelReminder = async () => {
+    if (foregroundReminderTimer) {
+      clearTimeout(foregroundReminderTimer);
+      foregroundReminderTimer = null;
+    }
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.getNotifications({ tag: NOTIFICATION_TAG, includeTriggered: true });
+      existing.forEach(n => n.close());
+    } catch {}
+  };
+
+  const scheduleReminder = async () => {
+    await cancelReminder();
+    if (!state.settings.reminderEnabled) return;
+    if (!hasNotificationAPI() || Notification.permission !== 'granted') return;
+
+    const ts = nextReminderTimestamp();
+
+    // Preferred path: schedule via service worker + TimestampTrigger
+    // (fires even when the app is closed — Chrome on Android only).
+    if (hasTimestampTrigger() && 'serviceWorker' in navigator) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification('Mealplan · Tagesziel', {
+          tag: NOTIFICATION_TAG,
+          body: buildReminderBody(),
+          icon: 'icons/icon-192.png',
+          badge: 'icons/icon-192.png',
+          showTrigger: new TimestampTrigger(ts),
+          data: { url: location.origin + location.pathname }
+        });
+        return;
+      } catch (e) { /* fall through to setTimeout */ }
+    }
+
+    // Fallback: foreground-only setTimeout (only fires while app is open).
+    foregroundReminderTimer = setTimeout(async () => {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification('Mealplan · Tagesziel', {
+          tag: NOTIFICATION_TAG,
+          body: buildReminderBody(),
+          icon: 'icons/icon-192.png',
+          badge: 'icons/icon-192.png',
+          data: { url: location.origin + location.pathname }
+        });
+      } catch {
+        new Notification('Mealplan · Tagesziel', { body: buildReminderBody(), icon: 'icons/icon-192.png' });
+      }
+      // Re-schedule for next day
+      scheduleReminder();
+    }, ts - Date.now());
+  };
+
+  const enableReminder = async () => {
+    if (!hasNotificationAPI()) {
+      showToast('Browser unterstützt keine Benachrichtigungen');
+      return false;
+    }
+    let perm = Notification.permission;
+    if (perm === 'default') {
+      try { perm = await Notification.requestPermission(); }
+      catch { perm = 'denied'; }
+    }
+    if (perm !== 'granted') {
+      showToast('Erlaubnis abgelehnt');
+      return false;
+    }
+    state.settings.reminderEnabled = true;
+    saveState();
+    await scheduleReminder();
+    showToast('Erinnerung aktiviert · 20:00');
+    return true;
+  };
+
+  const disableReminder = async () => {
+    state.settings.reminderEnabled = false;
+    saveState();
+    await cancelReminder();
+    showToast('Erinnerung deaktiviert');
+  };
+
+  const renderReminderRow = (host) => {
+    const enabled = state.settings.reminderEnabled;
+    const supported = hasNotificationAPI();
+    const permGranted = supported && Notification.permission === 'granted';
+    const reliable = hasTimestampTrigger();
+
+    const status = !supported
+      ? 'Browser unterstützt keine Benachrichtigungen.'
+      : !permGranted
+        ? 'Tipp den Schalter, um Benachrichtigungen zu erlauben.'
+        : reliable
+          ? '20:00 · feuert auch bei geschlossener App.'
+          : '20:00 · nur während die App geöffnet ist (Browser-Limit).';
+
+    host.innerHTML = `
+      <div class="reminder">
+        <div class="reminder-info">
+          <div class="reminder-title">Abends 20:00 fehlende Macros</div>
+          <div class="reminder-status">${status}</div>
+        </div>
+        <button type="button" class="switch ${enabled ? 'on' : ''}" role="switch" aria-checked="${enabled}" ${supported ? '' : 'disabled'}>
+          <span class="switch-thumb"></span>
+        </button>
+      </div>
+      ${enabled && permGranted ? `
+        <button type="button" class="link-btn" id="reminder-test">Probe-Benachrichtigung</button>
+      ` : ''}
+    `;
+    const sw = host.querySelector('.switch');
+    sw.addEventListener('click', async () => {
+      if (sw.disabled) return;
+      if (!enabled) {
+        const ok = await enableReminder();
+        if (ok) render();
+      } else {
+        await disableReminder();
+        render();
+      }
+    });
+    const test = host.querySelector('#reminder-test');
+    if (test) {
+      test.addEventListener('click', async () => {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          await reg.showNotification('Mealplan · Tagesziel', {
+            tag: NOTIFICATION_TAG + '-test',
+            body: buildReminderBody(),
+            icon: 'icons/icon-192.png',
+            badge: 'icons/icon-192.png',
+            data: { url: location.origin + location.pathname }
+          });
+        } catch {
+          new Notification('Mealplan · Tagesziel', { body: buildReminderBody(), icon: 'icons/icon-192.png' });
+        }
+      });
+    }
   };
 
   // ---------- Tabs ----------
@@ -791,10 +1209,12 @@
     render();
   });
 
-  // ---------- SW Registration ----------
+  // ---------- SW Registration + Reminder schedule ----------
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    window.addEventListener('load', async () => {
+      try { await navigator.serviceWorker.register('service-worker.js'); } catch {}
+      // Re-arm the reminder on every app open if it was previously enabled.
+      if (state.settings.reminderEnabled) scheduleReminder();
     });
   }
 

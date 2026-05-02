@@ -121,15 +121,17 @@ body {
   flex: 1;
   background: none;
   border: 0;
-  padding: var(--s-4) var(--s-2);
+  padding: var(--s-4) 4px;
   font-family: var(--font-sans);
-  font-size: var(--t-12);
+  font-size: 11px;
   font-weight: var(--fw-medium);
-  letter-spacing: var(--tr-label);
+  /* Wider letter-spacing of 0.18em is too tight for 5 tabs at 375px — slightly relaxed. */
+  letter-spacing: 0.10em;
   text-transform: uppercase;
   color: var(--fg-subtle);
   cursor: pointer;
   position: relative;
+  white-space: nowrap;
 }
 .tab[aria-selected="true"] { color: var(--fg); }
 .tab[aria-selected="true"]::after {
@@ -728,6 +730,145 @@ details[open] summary::before { content: "−"; }
 .today-row.breakfast .today-sub {
   font-size: var(--t-12);
   letter-spacing: 0.01em;
+}
+
+/* ============================================================
+   Verlauf (Trend chart + selectors + reminder)
+   ============================================================ */
+.trend-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+
+.seg {
+  display: flex;
+  border: var(--bw) solid var(--strong-stroke);
+  border-radius: var(--r-0);
+}
+.seg-btn {
+  flex: 1;
+  padding: 10px 8px;
+  font-family: var(--font-sans);
+  font-size: var(--t-12);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 0;
+  border-right: var(--bw) solid var(--hairline);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--easing);
+}
+.seg-btn:last-child { border-right: 0; }
+.seg-btn:hover { background: var(--surface-raised); }
+.seg-btn[aria-selected="true"] {
+  background: var(--fg);
+  color: var(--bg);
+}
+.seg-macro .seg-btn[aria-selected="true"] {
+  background: var(--accent);
+  color: #0A0A0A;
+}
+
+.chart-frame {
+  border: var(--bw) solid var(--hairline);
+  background: var(--bg);
+  padding: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.trend-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: var(--bw) solid var(--hairline);
+  border-bottom-width: 0;
+  margin-bottom: var(--s-3);
+}
+.trend-stat {
+  padding: var(--s-3) var(--s-4);
+  border-bottom: var(--bw) solid var(--hairline);
+  border-right: var(--bw) solid var(--hairline);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.trend-stat:nth-child(2n) { border-right: 0; }
+.trend-stat .label {
+  font-size: var(--t-12);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+  font-weight: var(--fw-medium);
+}
+.trend-stat .val {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+  font-size: var(--t-14);
+  color: var(--fg);
+}
+.trend-stat .val strong {
+  font-family: var(--font-serif);
+  font-size: var(--t-22);
+  font-weight: var(--fw-regular);
+  letter-spacing: var(--tr-tight);
+}
+
+/* ============================================================
+   Reminder switch
+   ============================================================ */
+.reminder-row { display: flex; flex-direction: column; gap: var(--s-3); }
+.reminder {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: var(--bw) solid var(--hairline);
+  background: var(--bg);
+}
+.reminder-info { flex: 1; min-width: 0; }
+.reminder-title {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-medium);
+  font-size: var(--t-14);
+  color: var(--fg);
+}
+.reminder-status {
+  font-family: var(--font-sans);
+  font-size: var(--t-12);
+  color: var(--fg-subtle);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.switch {
+  width: 44px; height: 24px;
+  border: var(--bw) solid var(--strong-stroke);
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  cursor: pointer;
+  padding: 1px;
+  display: flex; align-items: center;
+  flex-shrink: 0;
+  transition: background var(--dur-fast) var(--easing);
+}
+.switch[disabled] { opacity: 0.5; cursor: not-allowed; }
+.switch.on { background: var(--accent); border-color: var(--ink-1); }
+.switch-thumb {
+  width: 18px; height: 18px;
+  background: var(--ink-1);
+  border-radius: 50%;
+  transition: transform var(--dur-fast) var(--easing);
+}
+.switch.on .switch-thumb { transform: translateX(20px); }
+@media (prefers-color-scheme: dark) {
+  .switch-thumb { background: var(--paper-0); }
+  .switch.on .switch-thumb { background: var(--ink-1); }
 }
 
 /* ============================================================

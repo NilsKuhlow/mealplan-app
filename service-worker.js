@@ -1,7 +1,7 @@
 // Mealplan App · Service Worker
 // Cache-first für statische Assets, Network-first für HTML.
 
-const VERSION = 'mealplan-v4-extras';
+const VERSION = 'mealplan-v5-trend';
 const ASSETS = [
   './',
   './index.html',
@@ -28,6 +28,22 @@ self.addEventListener('activate', (event) => {
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+// Notification click → focus existing window or open one.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || self.location.origin + '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientsList => {
+      for (const client of clientsList) {
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+    })
   );
 });
 

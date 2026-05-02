@@ -29,6 +29,7 @@
   <nav class="tabs" role="tablist">
     <button class="tab" data-tab="shopping" role="tab" aria-selected="true">Einkauf</button>
     <button class="tab" data-tab="today" role="tab">Heute</button>
+    <button class="tab" data-tab="trend" role="tab">Verlauf</button>
     <button class="tab" data-tab="stock" role="tab">Vorrat</button>
     <button class="tab" data-tab="week" role="tab">Plan</button>
   </nav>
@@ -58,6 +59,28 @@
       <div id="macro-bars"></div>
       <div class="section-title">Tagesplan</div>
       <div id="today-list"></div>
+    </section>
+  </template>
+
+  <template id="tpl-trend">
+    <section class="tab-panel">
+      <div class="trend-toolbar">
+        <div class="seg" id="range-seg" role="tablist">
+          <button class="seg-btn" data-range="week" aria-selected="true">Woche</button>
+          <button class="seg-btn" data-range="month" aria-selected="false">Monat</button>
+          <button class="seg-btn" data-range="year" aria-selected="false">Jahr</button>
+        </div>
+        <div class="seg seg-macro" id="macro-seg" role="tablist">
+          <button class="seg-btn" data-macro="kcal" aria-selected="true">kcal</button>
+          <button class="seg-btn" data-macro="p" aria-selected="false">Protein</button>
+          <button class="seg-btn" data-macro="kh" aria-selected="false">KH</button>
+          <button class="seg-btn" data-macro="f" aria-selected="false">Fett</button>
+        </div>
+      </div>
+      <div class="chart-frame" id="chart-frame"></div>
+      <div class="trend-stats" id="trend-stats"></div>
+      <div class="section-title">Erinnerung</div>
+      <div class="reminder-row" id="reminder-row"></div>
     </section>
   </template>
 
