@@ -20,18 +20,24 @@
     return `${y}-${m}-${day}`;
   };
 
-  const defaultToday = () => ({
-    date: todayISO(),
-    consumed: {
-      breakfast: null,   // 'A' | 'B' | 'C' | null
-      snack1: false,
-      mensa: false,
-      powerMeal: false,
-      abendessen: false,
-      supplements: false
-    },
-    extras: []  // [{ id, name, kcal, p, kh, f }]
-  });
+  const defaultToday = () => {
+    // Mo–Fr: Mensa standardmäßig vorausgewählt — typischer Studienalltag.
+    // Sa/So: aus, weil Mensa zu.
+    const dow = new Date().getDay(); // 0=So … 6=Sa
+    const isWeekday = dow >= 1 && dow <= 5;
+    return {
+      date: todayISO(),
+      consumed: {
+        breakfast: null,   // 'A' | 'B' | 'C' | null
+        snack1: false,
+        mensa: isWeekday,
+        powerMeal: false,
+        abendessen: false,
+        supplements: false
+      },
+      extras: []  // [{ id, name, kcal, p, kh, f }]
+    };
+  };
 
   const defaultSettings = () => ({
     reminderEnabled: false,
@@ -80,13 +86,15 @@
         activeTab: 'shopping',
         today: defaultToday(),
         history: {},
-        settings: defaultSettings()
+        settings: defaultSettings(),
+        recentExtras: []
       };
       const parsed = JSON.parse(raw);
       const stock = defaultStock();
       Object.assign(stock, parsed.stock || {});
       const history = (parsed.history && typeof parsed.history === 'object') ? { ...parsed.history } : {};
       const settings = { ...defaultSettings(), ...(parsed.settings || {}) };
+      const recentExtras = Array.isArray(parsed.recentExtras) ? parsed.recentExtras : [];
 
       let today = parsed.today;
       if (!today) {
@@ -102,14 +110,15 @@
       // Migration: ensure all keys present
       today.consumed = { ...defaultToday().consumed, ...(today.consumed || {}) };
       today.extras = Array.isArray(today.extras) ? today.extras : [];
-      return { stock, activeTab: parsed.activeTab || 'shopping', today, history, settings };
+      return { stock, activeTab: parsed.activeTab || 'shopping', today, history, settings, recentExtras };
     } catch {
       return {
         stock: defaultStock(),
         activeTab: 'shopping',
         today: defaultToday(),
         history: {},
-        settings: defaultSettings()
+        settings: defaultSettings(),
+        recentExtras: []
       };
     }
   };
@@ -463,6 +472,8 @@
     return sumMacrosForSnapshot(state.today);
   };
 
+  const RECENT_EXTRAS_LIMIT = 12;
+
   const addExtra = (name, kcal, p, kh, f) => {
     ensureTodayFresh();
     const entry = {
@@ -474,8 +485,34 @@
       f:    Math.max(0, Math.round(f    || 0))
     };
     state.today.extras.push(entry);
+    upsertRecentExtra(entry);
     saveState();
     return entry;
+  };
+
+  const upsertRecentExtra = (entry) => {
+    const key = entry.name.trim().toLowerCase();
+    if (!key) return;
+    const existing = state.recentExtras.findIndex(e => e.name.trim().toLowerCase() === key);
+    const record = {
+      name: entry.name,
+      kcal: entry.kcal,
+      p: entry.p,
+      kh: entry.kh,
+      f: entry.f,
+      lastUsed: Date.now()
+    };
+    if (existing >= 0) state.recentExtras.splice(existing, 1);
+    state.recentExtras.unshift(record);
+    if (state.recentExtras.length > RECENT_EXTRAS_LIMIT) {
+      state.recentExtras.length = RECENT_EXTRAS_LIMIT;
+    }
+  };
+
+  const topRecentExtras = (n) => {
+    return [...state.recentExtras]
+      .sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0))
+      .slice(0, n);
   };
 
   const removeExtra = (id) => {
@@ -878,6 +915,33 @@
         render();
       });
       extrasList.appendChild(row);
+    }
+
+    // Quick-Add-Chips (zuletzt genutzte Einträge)
+    const recents = topRecentExtras(6);
+    if (recents.length > 0) {
+      const chipsRow = document.createElement('div');
+      chipsRow.className = 'extra-chips';
+      chipsRow.innerHTML = recents.map(r =>
+        `<button type="button" class="chip" data-name="${escapeHtml(r.name)}" data-kcal="${r.kcal}" data-p="${r.p}" data-kh="${r.kh}" data-f="${r.f}">
+          <span class="chip-name">${escapeHtml(r.name)}</span>
+          <span class="chip-kcal">${r.kcal}</span>
+        </button>`
+      ).join('');
+      chipsRow.querySelectorAll('.chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const e = addExtra(
+            btn.dataset.name,
+            parseInt(btn.dataset.kcal, 10),
+            parseInt(btn.dataset.p, 10),
+            parseInt(btn.dataset.kh, 10),
+            parseInt(btn.dataset.f, 10)
+          );
+          showToast(`${e.name} +${e.kcal} kcal`);
+          render();
+        });
+      });
+      extrasList.appendChild(chipsRow);
     }
 
     // Add-Form (collapsed by default)
